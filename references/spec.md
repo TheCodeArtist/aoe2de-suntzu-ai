@@ -77,9 +77,14 @@ The overlay is constructed from `resources/sun-tzu-background.png`, split into t
 ### 5.1. Prompt Engineering
 The prompt must instruct the AI to:
 1.  **Analyze the Image:** Identify game age (Dark/Feudal/Castle/Imperial), resource counts (floating wood/gold?), idle villagers, military composition, and active battles.
-2.  **Adopt Persona:** Speak as Sun Tzu would, but with knowledge of AoE2 mechanics.
-3.  **Be Witty:** Use metaphors relating war to gaming (e.g., "A mouse with no clicks is like a soldier with no spear").
-4.  **Output Format:** JSON or plain text containing *only* the quote.
+2.  **Consult Domain Knowledge:** Refer to `references/AoE2-Commentary-Bot-Ideas.md` for specific aspects of interest, including:
+    *   **Build Order Timings:** Comparing current time vs. expected Feudal/Castle times.
+    *   **Economy Balance:** Flagging floating resources or improper villager distribution (e.g., too much wood, not enough farms).
+    *   **Military Composition:** Identifying counter-units (e.g., Pikes vs. Knights) and missing upgrades (Bloodlines, Fletching).
+    *   **Strategic Positioning:** Comments on hill control, forward buildings, or walling gaps.
+3.  **Adopt Persona:** Speak as Sun Tzu would, but with knowledge of AoE2 mechanics.
+4.  **Be Witty:** Use metaphors relating war to gaming (e.g., "A mouse with no clicks is like a soldier with no spear").
+5.  **Output Format:** JSON or plain text containing *only* the quote.
 
 ### 5.2. Context Management
 Payload sent to LLM:
