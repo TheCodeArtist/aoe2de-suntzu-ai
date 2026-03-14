@@ -1,0 +1,71 @@
+---
+description: Implementation workflow, architecture overview, and threading model for Sun Tzu AoE2 Commentary Overlay
+globs: "**/*"
+alwaysApply: true
+---
+
+# Implementation Workflow
+
+## Project at a Glance
+
+**Sun Tzu AoE2 Commentary Overlay** is a hybrid desktop application:
+1.  **Backend (Python):** A `tkinter` desktop app that handles configuration, screen capture, and AI processing.
+2.  **Frontend (Web):** A local HTML/JS page designed to be loaded as a **Browser Source** in OBS Studio.
+
+The Backend acts as a local server, pushing updates (Sun Tzu quotes) to the Frontend via WebSockets or Server-Sent Events (SSE).
+
+---
+
+## Architecture & Data Flow
+
+1.  **Trigger:** Timer or Hotkey triggers the `backend`.
+2.  **Capture:** `backend/capture.py` finds the AoE2 window and takes a screenshot.
+3.  **Think:** `backend/ai_client.py` sends the screenshot + context to the LLM.
+4.  **Serve:** `backend/server.py` receives the text and pushes it to the connected OBS Browser Source.
+5.  **Render:** `frontend/script.js` receives the text and animates the overlay.
+
+---
+
+## Golden Rule
+
+**Never silently assume.** When something is ambiguous, under-specified, or contradicted by newly discovered information, stop and ask before writing code.
+
+---
+
+## When to Stop and Ask
+
+Pause and ask the user when:
+- **AoE2 Specifics:** Unsure about how to detect specific game states (e.g., "How do we know if it's Feudal Age just from a screenshot?").
+- **OBS Integration:** Unsure about how the Browser Source handles transparency or local file access.
+- **API Costs:** If a proposed feature would significantly increase LLM token usage.
+
+---
+
+## Threading Model
+
+The Python application is multi-threaded to ensure the GUI remains responsive while heavy tasks run.
+
+| Thread | Responsibility | Constraints |
+|---|---|---|
+| **Main Thread (GUI)** | Runs `tkinter.mainloop()`. Handles UI events, config changes. | **MUST** be the only thread touching Tkinter widgets. |
+| **Server Thread** | Runs the HTTP/WebSocket server (e.g., `threading.Thread(target=server.serve_forever)`). | Must be thread-safe when reading shared data (e.g., current quote). |
+| **Worker Thread** | Runs the "Capture -> AI -> Push" pipeline. | Spawned on Timer/Hotkey. Blocking I/O (Network/Disk) happens here. |
+
+**Communication:**
+- Use `queue.Queue` to pass generated quotes from **Worker** to **Server**.
+- Use `root.after()` or `queue.Queue` to pass status updates (e.g., "Processing...") from **Worker** to **Main Thread**.
+
+---
+
+## Handling Assumptions
+
+If you must make an assumption to proceed:
+1.  State the assumption explicitly in your response.
+2.  Add a `# ASSUMPTION:` comment in the code.
+3.  Flag it for review.
+
+```python
+# ASSUMPTION: The user is playing on a 1920x1080 resolution. 
+# Scaling might be needed for 1440p/4K.
+screenshot = resize_image(original, target_width=1920)
+```

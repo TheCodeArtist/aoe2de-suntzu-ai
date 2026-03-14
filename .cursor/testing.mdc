@@ -1,0 +1,96 @@
+---
+description: TDD workflow, test tooling, and mocking strategies for Sun Tzu AoE2 Commentary Overlay
+alwaysApply: true
+---
+
+# Testing
+
+## Workflow
+
+1.  **Write failing tests first** where possible, especially for logic-heavy components (Config, AI Client, Server logic).
+2.  **Mock External Dependencies:** Since this app relies heavily on external state (Game Window, OpenAI API), unit tests **must** mock these interactions.
+3.  **Manual Verification:** Frontend animations and OBS integration often require manual verification, but the data driving them (Backend) should be automated.
+
+---
+
+## Test Layout
+
+```
+tests/
+├── unit/
+│   ├── test_config.py      # JSON loading/saving, validation
+│   ├── test_capture.py     # Window detection logic (mocked)
+│   ├── test_ai_client.py   # Prompt construction, context management (mocked API)
+│   └── test_server.py      # SSE/WebSocket message formatting
+├── integration/
+│   └── test_flow.py        # Config -> Mock Capture -> Mock AI -> Server Queue
+└── assets/                 # Test assets (dummy screenshots, config files)
+```
+
+## Test Commands
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=backend --cov-report=term-missing
+```
+
+---
+
+## Mocking Rules
+
+### Screen Capture (`pygetwindow`, `pyautogui`, `mss`)
+**Never** attempt real screen captures in unit tests.
+- Mock `pygetwindow.getWindowsWithTitle` to return a dummy window object with fixed geometry.
+- Mock the screenshot function to return a generated `PIL.Image` (e.g., a solid color 100x100 image).
+
+```python
+# Example Mock
+def test_capture_returns_image(monkeypatch):
+    mock_img = Image.new('RGB', (100, 100))
+    monkeypatch.setattr("backend.capture.take_screenshot", lambda hwnd: mock_img)
+    # ... assertion ...
+```
+
+### LLM API (`openai` / HTTP requests)
+**Never** make real API calls in unit tests.
+- Mock the API client response to return a fixed JSON payload.
+- Verify that the `system_prompt` and `user_message` (image + text) are constructed correctly before sending.
+
+```python
+# Example Mock
+def test_ai_generates_quote(monkeypatch):
+    mock_response = {"choices": [{"message": {"content": "Sun Tzu says: Attack!"}}]}
+    monkeypatch.setattr("backend.ai_client.call_llm", lambda *args: mock_response)
+    # ... assertion ...
+```
+
+### GUI (`tkinter`)
+Avoid testing `tkinter` widgets directly in unit tests if possible.
+- Separate logic from presentation. Test the *logic* (e.g., "button press triggers function X") rather than the *widget* (e.g., "button color is red").
+- If GUI testing is needed, use `unittest.mock.MagicMock` to mock `tk` classes.
+
+### Server / OBS Communication
+- Test the **Protocol**: Verify that the server generates the correct SSE format (`data: ...\n\n`) or WebSocket frame.
+- You do not need to test the actual browser rendering in Python tests.
+
+---
+
+## Coverage Requirements
+
+| Module | Minimum Coverage | Key Scenarios |
+|---|---|---|
+| `config_manager.py` | 90% | Load valid/invalid JSON, save settings, default fallback. |
+| `ai_client.py` | 80% | Context window management (FIFO), prompt construction, error handling (API down). |
+| `capture.py` | 70% | Window selection logic, handling "window not found". |
+| `server.py` | 60% | Client connection handling, broadcasting messages. |
+
+---
+
+## Fixtures
+
+- **`mock_config`**: A temporary `config.json` file with known values.
+- **`mock_game_window`**: A mock object simulating the AoE2 window handle and rect.
+- **`sample_screenshot`**: A small base64 string or PIL image to use as input for the AI client tests.

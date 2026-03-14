@@ -1,0 +1,133 @@
+---
+description: Language, formatting, naming, and error-handling conventions for Sun Tzu AoE2 Commentary Overlay
+alwaysApply: true
+---
+
+# Code Style
+
+## Language & Runtime
+
+- **Python 3.10+** for the Backend.
+- **Vanilla HTML/CSS/JavaScript** for the Frontend (OBS Browser Source).
+- Full type annotations on every Python function signature (parameters and return type).
+- Use `from __future__ import annotations` at the top of Python files that use forward references.
+
+---
+
+## File & Module Naming
+
+- **Python:** Lowercase, underscore-separated filenames (snake_case).
+- **JavaScript/HTML/CSS:** Lowercase, kebab-case or standard web conventions.
+- **Project Structure** (per spec §6):
+
+```
+backend/
+  main.py           Entry point; GUI setup (Tkinter); wires all modules
+  capture.py        Screen capture logic (pygetwindow, pyautogui/mss)
+  ai_client.py      LLM API handling (OpenAI compatible)
+  config_manager.py Settings persistence (JSON)
+  server.py         Local web server for OBS (SSE/WebSocket)
+frontend/
+  index.html        Overlay entry point
+  style.css         Animations & Layout
+  script.js         WebSocket client & Typewriter logic
+```
+
+---
+
+## Formatting
+
+### Python
+- 4-space indentation (PEP 8).
+- Line length: **100 characters** max.
+- Double quotes for strings (consistent with `black` formatter defaults).
+- `black` + `isort` are the canonical formatters.
+- No trailing whitespace. Files end with a single newline.
+
+### JavaScript / CSS
+- 2-space indentation.
+- Semicolons required in JS.
+- Consistent bracing style (K&R or Allman).
+
+---
+
+## Types & Data Models
+
+- Use `dataclass` (preferred for lightweight internal models) or `Pydantic` for configuration and API payloads.
+- **Never pass raw `dict` between module boundaries** — define a typed model.
+- Shared types should be defined clearly (e.g., in a `models.py` or within relevant modules if scoped).
+
+```python
+# ✅ correct — typed model crossing module boundary
+@dataclass
+class GameState:
+    screenshot_path: str
+    window_title: str
+    timestamp: float
+
+def process_state(state: GameState) -> None: ...
+```
+
+---
+
+## Thread Safety
+
+The application runs multiple concurrent operations:
+1.  **Main Thread:** Runs the Tkinter GUI event loop.
+2.  **Server Thread:** Runs the local web server (e.g., `http.server` or `flask`/`fastapi`) to serve the Frontend.
+3.  **Worker Threads:** Handle blocking operations like Screen Capture and LLM API calls to prevent GUI freezing.
+
+**Rules:**
+- **Tkinter Safety:** All GUI updates (label changes, window resizing) **must** happen on the Main Thread. Use `root.after()` or thread-safe queues to pass data from workers to the GUI.
+- **Data Exchange:** Use `queue.Queue` for passing messages (e.g., new quotes) between the AI Worker and the Server/GUI.
+- **Locks:** Protect shared resources (like the `config` object or `recent_quotes` list) with `threading.Lock` if accessed by multiple threads.
+
+---
+
+## Tkinter Patterns
+
+- **No PyQt** (per user constraint).
+- Use `tkinter.StringVar`, `tkinter.IntVar`, etc., for binding UI elements to data.
+- Separate layout logic (packing/gridding) from business logic.
+- Handle `WM_DELETE_WINDOW` to ensure clean shutdown of the Server and Worker threads.
+
+---
+
+## Error Handling
+
+- Define custom exception types for domain-specific errors.
+  - `CaptureError`: Window not found or screen capture failed.
+  - `AIError`: API connection failed or rate limit exceeded.
+  - `ConfigError`: `config.json` missing or malformed.
+- Catch specific exceptions; never use bare `except:`.
+- Log errors with full tracebacks before showing user-facing error messages.
+
+```python
+# ✅ correct
+try:
+    image = capture_window(hwnd)
+except CaptureError as e:
+    logger.error(f"Capture failed: {e}")
+    show_error_dialog("Could not capture game window.")
+```
+
+---
+
+## Logging
+
+- Use the standard `logging` library.
+- Log to both console (for dev) and a rotating file (for user debugging).
+- **Levels:**
+  - `DEBUG`: Raw API payloads, capture dimensions.
+  - `INFO`: App startup, config loaded, quote generated.
+  - `ERROR`: API failures, missing assets.
+
+---
+
+## Inline Code Commentary
+
+- **Mandatory Docstrings:** Every public function and class must have a docstring explaining purpose, args, and returns.
+- **Explain "Why":** Comment on non-obvious logic, specifically:
+  - Why a specific capture method (e.g., `mss` vs `pyautogui`) was chosen.
+  - How the prompt engineering structure works.
+  - The logic behind the "cooldown" or "context window" management.
