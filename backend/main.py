@@ -325,13 +325,13 @@ class SunTzuApp:
         self._max_tokens_var = tk.IntVar(value=self.config.max_tokens)
         self._enable_thinking_var = tk.BooleanVar(value=self.config.enable_thinking)
 
-        ttk.Label(parent, text="Endpoint URL:").grid(row=0, column=0, sticky="e", **pad)
+        ttk.Label(parent, text="vLLM Endpoint URL:").grid(row=0, column=0, sticky="e", **pad)
         ttk.Entry(parent, textvariable=self._endpoint_var, width=50).grid(row=0, column=1, **pad)
 
         ttk.Label(parent, text="API Key:").grid(row=1, column=0, sticky="e", **pad)
         ttk.Entry(parent, textvariable=self._api_key_var, show="*", width=50).grid(row=1, column=1, **pad)
 
-        ttk.Label(parent, text="Model Name:").grid(row=2, column=0, sticky="e", **pad)
+        ttk.Label(parent, text="vLLM Model Name:").grid(row=2, column=0, sticky="e", **pad)
         ttk.Entry(parent, textvariable=self._model_var, width=50).grid(row=2, column=1, **pad)
 
         ttk.Label(parent, text="Max Tokens:").grid(row=3, column=0, sticky="e", **pad)
@@ -775,7 +775,7 @@ class SunTzuApp:
         t.start()
 
         # Brief delay to let Flask bind, then update status
-        self.root.after(1200, lambda: self._server_status_var.set(f"Server: http://127.0.0.1:{port}"))
+        self.root.after(1200, lambda: self._server_status_var.set(f"OBS Overlay: http://127.0.0.1:{port}"))
         logger.info("Server thread started on port %d.", port)
 
     # -----------------------------------------------------------------------
