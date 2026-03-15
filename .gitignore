@@ -1,0 +1,35 @@
+# Virtual environments
+pyvenv/
+venv/
+.venv/
+env/
+
+# User configuration — contains API key in plaintext
+config.json
+quote_history.json
+
+# Logs
+*.log
+suntzu-overlay.log
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Test artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.spec
+
+# IDE / OS artefacts
+.idea/
+.vscode/
+*.DS_Store
+Thumbs.db

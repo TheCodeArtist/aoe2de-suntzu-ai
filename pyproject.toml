@@ -1,0 +1,13 @@
+[project]
+name = "aoe2de-suntzu-ai"
+version = "1.0.0"
+description = "Sun Tzu AoE2 Commentary Overlay"
+requires-python = ">=3.10"
+
+[project.scripts]
+suntzu-overlay = "backend.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v"
