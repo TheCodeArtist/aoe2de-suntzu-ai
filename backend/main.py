@@ -15,6 +15,9 @@ from pathlib import Path
 from tkinter import messagebox, scrolledtext, ttk
 from typing import Callable
 
+import pystray
+from PIL import Image as PilImage
+
 from backend.ai_client import ContextWindow, generate_quote
 from backend.capture import capture_window, image_to_base64, list_windows
 from backend.config_manager import (
@@ -209,10 +212,21 @@ class SunTzuApp:
         self.root.title("Sun Tzu AoE2 Commentary Overlay")
         self.root.resizable(False, False)
 
+        # Remove minimize/maximize buttons and taskbar entry on Windows
+        self.root.attributes("-toolwindow", True)
+        # Keep window on top so it's easy to reach when shown from tray
+        # (user can toggle this preference later if needed)
+
+        if APP_ICON_PATH.exists():
+            _icon = tk.PhotoImage(file=str(APP_ICON_PATH))
+            self.root.iconphoto(True, _icon)
+            self._icon_ref = _icon  # keep a reference so GC doesn't collect it
+
         # Running state flags
         self._running = False
         self._hotkey_registered = False
         self._pynput_listener = None
+        self._tray_icon: pystray.Icon | None = None
 
         # Load or create config (must come before any config-dependent init)
         try:
@@ -238,10 +252,13 @@ class SunTzuApp:
         # Start polling the status_queue every 100 ms
         self.root.after(100, self._poll_status)
 
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.protocol("WM_DELETE_WINDOW", self._hide_to_tray)
 
         # Register the global hotkey immediately so it works before Start is clicked
         self._register_hotkey()
+
+        # Start the system tray icon
+        self._start_tray_icon()
 
         logger.info("Application started.")
 
@@ -777,14 +794,80 @@ class SunTzuApp:
             )
 
     # -----------------------------------------------------------------------
+    # System tray
+    # -----------------------------------------------------------------------
+
+    def _start_tray_icon(self) -> None:
+        """Create and start the pystray system tray icon in a daemon thread."""
+        tray_image = self._load_tray_image()
+
+        menu = pystray.Menu(
+            pystray.MenuItem("Show", self._on_tray_show, default=True),
+            pystray.MenuItem("Hide", self._on_tray_hide),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Trigger Now", self._on_tray_trigger),
+            pystray.MenuItem("Test Overlay", self._on_tray_test),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Quit", self._on_tray_quit),
+        )
+
+        self._tray_icon = pystray.Icon(
+            "suntzu-overlay",
+            tray_image,
+            "Sun Tzu AoE2 Overlay",
+            menu,
+        )
+
+        t = threading.Thread(target=self._tray_icon.run, daemon=True)
+        t.start()
+
+    def _load_tray_image(self) -> PilImage.Image:
+        """Load the tray icon image, falling back to a generated placeholder."""
+        if APP_ICON_PATH.exists():
+            try:
+                return PilImage.open(str(APP_ICON_PATH)).resize((64, 64))
+            except Exception:
+                pass
+        # Fallback: solid colour square
+        img = PilImage.new("RGB", (64, 64), color=(42, 74, 59))
+        return img
+
+    def _hide_to_tray(self) -> None:
+        """Hide the main window to the system tray."""
+        self.root.withdraw()
+
+    def _show_window(self) -> None:
+        """Restore the main window from the system tray (must run on GUI thread)."""
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+
+    def _on_tray_show(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        self.root.after(0, self._show_window)
+
+    def _on_tray_hide(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        self.root.after(0, self._hide_to_tray)
+
+    def _on_tray_trigger(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        self.root.after(0, self._on_trigger_now)
+
+    def _on_tray_test(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        self.root.after(0, self._on_test_overlay)
+
+    def _on_tray_quit(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        self.root.after(0, self._quit_app)
+
+    # -----------------------------------------------------------------------
     # Shutdown
     # -----------------------------------------------------------------------
 
-    def _on_close(self) -> None:
-        """Clean shutdown: stop threads then destroy the window."""
+    def _quit_app(self) -> None:
+        """Full shutdown: stop threads, remove tray icon, destroy window."""
         logger.info("Application closing.")
         self.timer_stop_event.set()
         self._unregister_hotkey()
+        if self._tray_icon is not None:
+            self._tray_icon.stop()
         self.root.destroy()
 
 
