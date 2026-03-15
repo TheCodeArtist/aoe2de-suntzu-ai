@@ -181,6 +181,7 @@ class SunTzuApp:
         # Running state flags
         self._running = False
         self._hotkey_registered = False
+        self._pynput_listener = None
 
         # Load or create config (must come before any config-dependent init)
         try:
@@ -207,6 +208,10 @@ class SunTzuApp:
         self.root.after(100, self._poll_status)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Register the global hotkey immediately so it works before Start is clicked
+        self._register_hotkey()
+
         logger.info("Application started.")
 
     # -----------------------------------------------------------------------
@@ -444,11 +449,66 @@ class SunTzuApp:
         threading.Thread(target=self._capture_hotkey_blocking, daemon=True).start()
 
     def _capture_hotkey_blocking(self) -> None:
-        """Block in a background thread until a hotkey combination is pressed."""
-        try:
-            import keyboard  # noqa: PLC0415
+        """Block in a background thread until a key combination is pressed and released.
 
-            combo = keyboard.read_hotkey(suppress=False)
+        Collects all keys held at the moment the first key is released, then
+        formats them as a 'ctrl+shift+t' string compatible with pynput HotKey.parse().
+        """
+        try:
+            from pynput import keyboard as pynput_kb  # noqa: PLC0415
+
+            held: set[pynput_kb.Key | pynput_kb.KeyCode] = set()
+            done = threading.Event()
+            captured: list[str] = []
+
+            MODIFIER_ORDER = [
+                pynput_kb.Key.ctrl, pynput_kb.Key.ctrl_l, pynput_kb.Key.ctrl_r,
+                pynput_kb.Key.shift, pynput_kb.Key.shift_l, pynput_kb.Key.shift_r,
+                pynput_kb.Key.alt, pynput_kb.Key.alt_l, pynput_kb.Key.alt_r,
+                pynput_kb.Key.cmd, pynput_kb.Key.cmd_l, pynput_kb.Key.cmd_r,
+            ]
+            MODIFIER_NAMES = {
+                pynput_kb.Key.ctrl: "ctrl", pynput_kb.Key.ctrl_l: "ctrl",
+                pynput_kb.Key.ctrl_r: "ctrl",
+                pynput_kb.Key.shift: "shift", pynput_kb.Key.shift_l: "shift",
+                pynput_kb.Key.shift_r: "shift",
+                pynput_kb.Key.alt: "alt", pynput_kb.Key.alt_l: "alt",
+                pynput_kb.Key.alt_r: "alt",
+                pynput_kb.Key.cmd: "cmd", pynput_kb.Key.cmd_l: "cmd",
+                pynput_kb.Key.cmd_r: "cmd",
+            }
+
+            def on_press(key: pynput_kb.Key | pynput_kb.KeyCode) -> None:
+                held.add(key)
+
+            def on_release(key: pynput_kb.Key | pynput_kb.KeyCode) -> bool | None:
+                if done.is_set():
+                    return False
+                # Build combo: modifiers first, then the triggering (non-modifier) key
+                mods_seen: set[str] = set()
+                parts: list[str] = []
+                for mod_key in MODIFIER_ORDER:
+                    if mod_key in held and MODIFIER_NAMES[mod_key] not in mods_seen:
+                        parts.append(MODIFIER_NAMES[mod_key])
+                        mods_seen.add(MODIFIER_NAMES[mod_key])
+
+                trigger = key
+                if trigger not in MODIFIER_NAMES:
+                    if hasattr(trigger, "char") and trigger.char:  # type: ignore[union-attr]
+                        parts.append(trigger.char.lower())  # type: ignore[union-attr]
+                    else:
+                        name = getattr(trigger, "name", None) or str(trigger)
+                        parts.append(name.lower())
+                    captured.append("+".join(parts))
+                    done.set()
+                    return False  # stop listener
+                held.discard(key)
+                return None
+
+            with pynput_kb.Listener(on_press=on_press, on_release=on_release):
+                done.wait(timeout=30)
+
+            combo = captured[0] if captured else self.config.hotkey
             self.root.after(0, lambda: self._apply_captured_hotkey(combo))
         except Exception as exc:
             logger.error("Hotkey capture failed: %s", exc)
@@ -461,6 +521,8 @@ class SunTzuApp:
 
     def _save_config(self) -> None:
         """Read current widget values and persist to config.json."""
+        prev_hotkey = self.config.hotkey
+
         self.config.endpoint_url = self._endpoint_var.get().strip()
         self.config.api_key = self._api_key_var.get().strip()
         self.config.model_name = self._model_var.get().strip()
@@ -489,6 +551,11 @@ class SunTzuApp:
         except Exception as exc:
             logger.error("Failed to save config: %s", exc)
             messagebox.showerror("Save Error", str(exc))
+            return
+
+        if self.config.hotkey != prev_hotkey:
+            self._unregister_hotkey()
+            self._register_hotkey()
 
     # -----------------------------------------------------------------------
     # Start / Stop / Trigger
@@ -503,9 +570,6 @@ class SunTzuApp:
         self._start_btn.configure(state="disabled")
         self._stop_btn.configure(state="normal")
         self._set_status("Running.", "ok")
-
-        # Register global hotkey
-        self._register_hotkey()
 
         # Start timer loop if auto-trigger is enabled
         if self.config.auto_trigger:
@@ -525,7 +589,6 @@ class SunTzuApp:
             return
         self._running = False
         self.timer_stop_event.set()
-        self._unregister_hotkey()
         self._start_btn.configure(state="normal")
         self._stop_btn.configure(state="disabled")
         self._set_status("Stopped.", "idle")
@@ -563,30 +626,32 @@ class SunTzuApp:
         t.start()
 
     # -----------------------------------------------------------------------
-    # Hotkey management
+    # Hotkey management  (pynput — no admin rights required)
     # -----------------------------------------------------------------------
 
     def _register_hotkey(self) -> None:
         if self._hotkey_registered:
             return
         try:
-            import keyboard  # noqa: PLC0415
+            from pynput import keyboard as pynput_kb  # noqa: PLC0415
 
-            # Use a thread-safe wrapper that schedules the action on the main thread
-            keyboard.add_hotkey(self.config.hotkey, self._on_hotkey_press)
+            hotkey = pynput_kb.HotKey(
+                pynput_kb.HotKey.parse(self._to_pynput_combo(self.config.hotkey)),
+                lambda: self.root.after(0, self._execute_hotkey_action),
+            )
+            self._pynput_listener = pynput_kb.Listener(
+                on_press=lambda k: hotkey.press(self._pynput_listener.canonical(k)),
+                on_release=lambda k: hotkey.release(self._pynput_listener.canonical(k)),
+            )
+            self._pynput_listener.start()
             self._hotkey_registered = True
             logger.info("Hotkey registered: %s", self.config.hotkey)
         except Exception as exc:
             logger.error("Failed to register hotkey '%s': %s", self.config.hotkey, exc)
             self._set_status(f"Hotkey error: {exc}", "error")
 
-    def _on_hotkey_press(self) -> None:
-        """Callback from keyboard thread. Schedule execution on main thread."""
-        self.root.after(0, self._execute_hotkey_action)
-
     def _execute_hotkey_action(self) -> None:
         """Runs on main thread: saves config (syncing UI) then spawns worker."""
-        # Behave like 'Trigger Now': save current UI state to config, then run.
         self._save_config()
         self._spawn_worker(TriggerSource.HOTKEY)
 
@@ -594,13 +659,28 @@ class SunTzuApp:
         if not self._hotkey_registered:
             return
         try:
-            import keyboard  # noqa: PLC0415
-
-            keyboard.remove_hotkey(self.config.hotkey)
+            self._pynput_listener.stop()
             self._hotkey_registered = False
             logger.info("Hotkey unregistered.")
         except Exception as exc:
             logger.warning("Failed to unregister hotkey: %s", exc)
+
+    @staticmethod
+    def _to_pynput_combo(combo: str) -> str:
+        """Convert a 'ctrl+shift+t' style string to pynput HotKey.parse() format.
+
+        pynput expects modifier names wrapped in angle brackets and joined with '+':
+            ctrl+shift+t  →  <ctrl>+<shift>+t
+        Single character keys are left bare; everything else is wrapped.
+        """
+        parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
+        converted = []
+        for part in parts:
+            if len(part) == 1:
+                converted.append(part)
+            else:
+                converted.append(f"<{part}>")
+        return "+".join(converted)
 
     # -----------------------------------------------------------------------
     # Status bar
