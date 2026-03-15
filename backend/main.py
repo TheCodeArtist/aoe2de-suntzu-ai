@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 import queue
@@ -889,6 +890,19 @@ def _is_port_free(port: int, host: str = "127.0.0.1") -> bool:
 
 def main() -> None:
     """Application entry point."""
+    # Prevent multiple instances on Windows via a named mutex
+    if sys.platform == "win32":
+        _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "SunTzu-AoE2-SingleInstance")
+        if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            import tkinter
+            tkinter.Tk().withdraw()
+            messagebox.showerror(
+                "Already Running",
+                "Sun Tzu AoE2 Overlay is already running.\n"
+                "Check the system tray.",
+            )
+            sys.exit(0)
+
     _setup_logging()
     root = tk.Tk()
     app = SunTzuApp(root)  # noqa: F841
