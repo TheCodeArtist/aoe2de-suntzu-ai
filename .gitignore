@@ -26,7 +26,9 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+# Ignore auto-generated specs but keep our hand-crafted one
 *.spec
+!suntzu.spec
 
 # IDE / OS artefacts
 .idea/
