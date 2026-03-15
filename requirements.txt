@@ -6,4 +6,4 @@ openai>=1.0
 pytest>=8.0
 pytest-cov>=5.0
 pywin32>=306
-pynput>=1.7
+pystray>=0.19
