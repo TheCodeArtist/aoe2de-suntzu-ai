@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import random
 import socket
+import sys
 import threading
 import time
 import tkinter as tk
@@ -29,11 +31,40 @@ from backend.server import run_server
 # Paths
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).parent.parent
-CONFIG_PATH = PROJECT_ROOT / "config.json"
-ASSETS_DIR = PROJECT_ROOT / "assets"
-FRONTEND_DIR = PROJECT_ROOT / "frontend"
-LOG_PATH = PROJECT_ROOT / "suntzu-overlay.log"
+
+def _get_bundle_path() -> Path:
+    """Return the read-only assets root: sys._MEIPASS when frozen, repo root in dev."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).parent.parent
+
+
+def _get_user_data_path() -> Path:
+    """Return the writable per-user data directory, creating it if necessary.
+
+    Windows : %APPDATA%\\SunTzu-AoE2
+    macOS   : ~/Library/Application Support/SunTzu-AoE2
+    Linux   : $XDG_CONFIG_HOME/SunTzu-AoE2  (fallback: ~/.config/SunTzu-AoE2)
+    """
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home()))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    app_dir = base / "SunTzu-AoE2"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    return app_dir
+
+
+PROJECT_ROOT = _get_bundle_path()       # read-only: assets/, frontend/
+DATA_ROOT    = _get_user_data_path()    # writable:  config, logs, history
+
+CONFIG_PATH   = DATA_ROOT / "config.json"
+LOG_PATH      = DATA_ROOT / "suntzu-overlay.log"
+ASSETS_DIR    = PROJECT_ROOT / "assets"
+FRONTEND_DIR  = PROJECT_ROOT / "frontend"
+APP_ICON_PATH = ASSETS_DIR / "sun-tzu-icon.png"
 
 # ---------------------------------------------------------------------------
 # Logging bootstrap  (called once before the GUI is created)
@@ -197,7 +228,7 @@ class SunTzuApp:
         self.context = ContextWindow(
             max_size=self.config.context_window_size,
             similarity_threshold=self.config.dedup_similarity_threshold,
-            history_path=PROJECT_ROOT / "quote_history.json",
+            history_path=DATA_ROOT / "quote_history.json",
         )
 
         self._build_ui()
