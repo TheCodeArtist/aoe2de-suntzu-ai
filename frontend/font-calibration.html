@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<!--
+  font-calibration.html
+  ─────────────────────
+  Interactive font calibration tool for the Sun Tzu overlay.
+
+  • On load, fetches /fonts-list to discover every .ttf/.otf/.woff in fonts/ — no
+    hard-coded list needed. Adding a new font file is enough to make it appear here.
+
+  • Each font row renders a real 320×300 overlay replica (same background, spacers,
+    text area layout as the live OBS overlay) so WYSIWYG comparison is accurate.
+
+  • Live slider + numeric input per font for instant scale tweaking.
+
+  • The code snippet at the bottom updates live; Copy button pastes into script.js.
+
+  Workflow
+  ────────
+  1. Open http://localhost:5000/font-calibration.html
+  2. Drag sliders until all overlays look the same visual text height.
+  3. Click Copy and paste the snippet into QUOTE_FONTS in script.js.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Font Calibration — Sun Tzu Overlay</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #111009;
+    color: #ecdcaa;
+    font-family: sans-serif;
+    font-size: 14px;
+    padding: 28px 28px 60px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ──────────────────────────────────────────────── */
+  .page-title {
+    font-size: 12px;
+    font-weight: normal;
+    letter-spacing: 0.1em;
+    color: #9a8050;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .instructions {
+    font-size: 12px;
+    color: #7a6040;
+    max-width: 820px;
+    line-height: 1.65;
+    margin-bottom: 24px;
+  }
+  .instructions code {
+    color: #a0c080;
+    background: rgba(100,180,80,0.1);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
+  /* ── Global controls bar ─────────────────────────────────── */
+  .global-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .global-bar label {
+    font-size: 12px;
+    color: #9a8050;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .global-bar input[type=range] { width: 140px; }
+  .global-bar input[type=number] {
+    width: 58px;
+    background: #0d0a04;
+    border: 1px solid rgba(255,240,180,0.22);
+    border-radius: 3px;
+    color: #ecdcaa;
+    padding: 3px 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .btn {
+    background: rgba(255,200,60,0.1);
+    border: 1px solid rgba(255,200,60,0.32);
+    border-radius: 3px;
+    color: #c8a040;
+    font-size: 12px;
+    padding: 5px 13px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+  }
+  .btn:hover { background: rgba(255,200,60,0.2); }
+  .btn.accent {
+    background: rgba(255,200,60,0.16);
+    border-color: rgba(255,200,60,0.5);
+    color: #f0c040;
+  }
+  .btn.accent:hover { background: rgba(255,200,60,0.28); }
+
+  /* ── Font rows ───────────────────────────────────────────── */
+  .font-row {
+    margin-bottom: 24px;
+    padding: 16px 20px 18px;
+    background: rgba(255,240,180,0.03);
+    border: 1px solid rgba(255,240,180,0.1);
+    border-radius: 5px;
+  }
+  .font-row.baseline-row {
+    border-color: rgba(255,200,60,0.22);
+    background: rgba(255,200,60,0.03);
+  }
+
+  .row-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .font-label {
+    font-size: 13px;
+    color: #c8b070;
+    letter-spacing: 0.04em;
+    flex: 1;
+    min-width: 200px;
+  }
+  .baseline-badge {
+    font-size: 9px;
+    color: #906030;
+    border: 1px solid rgba(255,200,60,0.28);
+    border-radius: 2px;
+    padding: 1px 5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .row-stats {
+    font-size: 11px;
+    color: #6a5035;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* scale slider + number */
+  .scale-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .scale-control label { font-size: 12px; color: #9a8050; }
+  .scale-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 220px;
+    height: 5px;
+    border-radius: 3px;
+    background: #3a2812;
+    outline: none;
+    cursor: pointer;
+  }
+  .scale-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #f0c040;
+    cursor: pointer;
+    border: none;
+  }
+  .scale-slider::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #f0c040;
+    cursor: pointer;
+    border: none;
+  }
+  .scale-num {
+    width: 72px;
+    background: #0d0a04;
+    border: 1px solid rgba(255,240,180,0.22);
+    border-radius: 3px;
+    color: #f0c040;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 3px 7px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  .scale-num:focus { outline: 1px solid rgba(255,200,60,0.6); }
+  .rendered-px {
+    font-size: 11px;
+    color: #6a5035;
+    font-variant-numeric: tabular-nums;
+    min-width: 80px;
+  }
+
+  /* ── Overlay preview replica ─────────────────────────────── */
+
+  /*
+   * .preview-overlay mirrors the real overlay exactly.
+   * It is 320×300 px — the same size as the OBS browser source.
+   * We wrap it in .preview-wrap which scales it down for display
+   * via CSS transform, while preserving pixel-accurate rendering.
+   */
+  .preview-wrap {
+    /* Scaled-down display container — change --scale to zoom in/out */
+    --scale: 1.5;
+    width:  calc(320px * var(--scale));
+    height: calc(300px * var(--scale));
+    flex-shrink: 0;
+  }
+
+  .preview-overlay {
+    width: 320px;
+    height: 300px;
+    position: relative;
+    transform-origin: top left;
+    /* scale applied inline via JS so the global scale slider works */
+  }
+
+  .preview-overlay img.preview-bg {
+    display: block;
+    width: 320px;
+    height: 300px;
+    user-select: none;
+  }
+
+  .preview-text-area {
+    position: absolute;
+    top: 30px;
+    left: 30px;
+    right: 28px;
+    bottom: 30px;
+    overflow: hidden;
+  }
+
+  /* stepped float spacers — identical values to style.css */
+  .preview-spacer       { float: right; clear: right; }
+  .preview-spacer-top   { width: 0px;   height: 68px; }
+  .preview-spacer-1     { width: 108px; height: 50px; }
+  .preview-spacer-2     { width: 120px; height: 60px; }
+  .preview-spacer-3     { width: 162px; height: 62px; }
+
+  .preview-quote {
+    line-height: 1.3;
+    color: #2a1a06;
+    text-shadow: 0 1px 2px rgba(255,240,200,0.6);
+    word-break: break-word;
+    overflow-wrap: break-word;
+    /* font-family, font-weight, font-size applied inline */
+  }
+
+  /* row body = controls column + preview column side by side */
+  .row-body {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .row-controls {
+    flex: 1;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ── Preview zoom control ────────────────────────────────── */
+  .zoom-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .zoom-bar label { font-size: 12px; color: #7a6040; }
+  .zoom-bar input[type=range] { width: 120px; }
+  .zoom-label { font-size: 11px; color: #9a8050; min-width: 40px; }
+
+  /* ── Code snippet ────────────────────────────────────────── */
+  .divider {
+    border: none;
+    border-top: 1px solid rgba(255,240,180,0.08);
+    margin: 36px 0 24px;
+  }
+  .section-title {
+    font-size: 12px;
+    font-weight: normal;
+    letter-spacing: 0.1em;
+    color: #9a8050;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .code-block {
+    background: #0d0a04;
+    border: 1px solid rgba(255,240,180,0.12);
+    border-radius: 4px;
+    padding: 14px 18px;
+    font-family: monospace;
+    font-size: 12.5px;
+    color: #a0c080;
+    white-space: pre;
+    overflow-x: auto;
+    line-height: 1.75;
+    margin-bottom: 10px;
+  }
+
+  /* ── Preview text input ──────────────────────────────────── */
+  .preview-text-bar {
+    margin-bottom: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 820px;
+  }
+  .preview-text-bar label {
+    font-size: 12px;
+    color: #9a8050;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .preview-text-bar textarea {
+    background: #0d0a04;
+    border: 1px solid rgba(255,240,180,0.22);
+    border-radius: 3px;
+    color: #ecdcaa;
+    font-size: 13px;
+    line-height: 1.55;
+    padding: 8px 10px;
+    resize: vertical;
+    min-height: 62px;
+    width: 100%;
+    font-family: inherit;
+  }
+  .preview-text-bar textarea:focus {
+    outline: 1px solid rgba(255,200,60,0.5);
+    border-color: rgba(255,200,60,0.4);
+  }
+  .preview-text-counts {
+    font-size: 11px;
+    color: #6a5035;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    gap: 14px;
+  }
+  .preview-text-counts span { white-space: nowrap; }
+
+  /* ── Loading / error ─────────────────────────────────────── */
+  .status-msg {
+    font-size: 13px;
+    color: #7a6040;
+    padding: 24px 0;
+  }
+  .status-msg.error { color: #c04030; }
+</style>
+</head>
+<body>
+
+<p class="page-title">Sun Tzu Overlay — Font Calibration</p>
+<p class="instructions">
+  Fonts are discovered automatically from the server — drop a new <code>.ttf</code> into
+  <code>fonts/</code> and refresh. Each preview is the real 320×300 overlay (same
+  background, portrait, text-area layout as the live OBS source). Drag the <strong>scale</strong>
+  slider until all previews look the same visual text height, then hit <strong>Copy</strong>
+  and paste the snippet into <code>QUOTE_FONTS</code> in <code>script.js</code>.
+  The <strong>Base size</strong> automatically tracks the live overlay's length-based font-size
+  formula as you change the preview text, so what you see here matches OBS exactly.
+</p>
+
+<!-- Preview text -->
+<div class="preview-text-bar">
+  <label for="preview-text-input">Preview text</label>
+  <textarea id="preview-text-input" rows="3" spellcheck="false"></textarea>
+  <div class="preview-text-counts">
+    <span id="count-words">0 words</span>
+    <span id="count-chars">0 chars</span>
+  </div>
+</div>
+
+<!-- Global controls -->
+<div class="global-bar">
+  <label>
+    Base size:
+    <input type="range"  id="base-px-slider" min="8" max="60" value="18" step="1">
+    <input type="number" id="base-px-num"    min="8" max="60" value="18" step="1">
+    <span style="font-size:10px;color:#504030">px</span>
+  </label>
+
+  <div class="zoom-bar">
+    <label for="zoom-slider">Preview zoom:</label>
+    <input type="range" id="zoom-slider" min="0.5" max="3" value="1.5" step="0.05">
+    <span class="zoom-label" id="zoom-label">1.5×</span>
+  </div>
+
+  <button class="btn" onclick="resetAll()">Reset all scales</button>
+</div>
+
+<div id="rows-container"><p class="status-msg">Discovering fonts…</p></div>
+
+<hr class="divider">
+<p class="section-title">Generated code snippet</p>
+<div id="code-block" class="code-block">— loading …</div>
+<button class="btn accent" onclick="copyCode()">Copy to clipboard</button>
+
+<canvas id="measure-canvas" style="display:none"></canvas>
+
+<script src="overlay-config.js"></script>
+<script>
+"use strict";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const SAMPLE_TEXT =
+  "Supreme excellence consists in breaking the enemy's resistance without fighting.";
+
+const MEASURE_PX  = 100;
+const SLIDER_MIN  = 0.50;
+const SLIDER_MAX  = 2.50;
+const SLIDER_STEP = 0.01;
+
+// computeBasePx() and QUOTE_FONTS are defined in overlay-config.js (loaded above).
+
+// ── State ────────────────────────────────────────────────────────────────────
+
+let fontData = [];
+let basePx       = computeBasePx(SAMPLE_TEXT);
+let previewScale = 1.5;
+let sampleText   = SAMPLE_TEXT;
+
+// ── Canvas cap-height measurement ────────────────────────────────────────────
+
+const canvas = document.getElementById("measure-canvas");
+const ctx    = canvas.getContext("2d");
+
+function measureCapHeight(family, weight) {
+  const size    = MEASURE_PX;
+  canvas.width  = size * 2;
+  canvas.height = size * 2;
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle    = "#fff";
+  ctx.font         = `${weight} ${size}px '${family}'`;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("H", size * 0.2, size * 1.2);
+
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const w = canvas.width, h = canvas.height;
+  let top = -1, bottom = -1;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4] > 20) {
+        if (top === -1) top = y;
+        bottom = y;
+        break;
+      }
+    }
+  }
+  return top === -1 ? size : bottom - top + 1;
+}
+
+// ── Font-face registration ───────────────────────────────────────────────────
+
+function inferWeight(stem) {
+  const s = stem.toLowerCase();
+  if (s.includes("black"))                              return "900";
+  if (s.includes("extrabold") || s.includes("extra-bold")) return "800";
+  if (s.includes("bold"))                               return "700";
+  if (s.includes("semibold") || s.includes("demi"))     return "600";
+  if (s.includes("medium"))                             return "500";
+  if (s.includes("light"))                              return "300";
+  if (s.includes("thin"))                               return "100";
+  return "400";
+}
+
+function registerFontFace(stem, filename, weight) {
+  const ff = new FontFace(`'${stem}'`, `url('fonts/${encodeURIComponent(filename)}')`, { weight });
+  document.fonts.add(ff);
+  return ff.load()
+    .then(() => ({ stem, filename, weight, ok: true }))
+    .catch(() => ({ stem, filename, weight, ok: false }));
+}
+
+// ── DOM builders ─────────────────────────────────────────────────────────────
+
+function buildOverlayPreview(fd, idx) {
+  const renderPx = Math.round(basePx * fd.currentScale);
+
+  const wrap = document.createElement("div");
+  wrap.className = "preview-wrap";
+  wrap.id = `wrap-${idx}`;
+  wrap.style.setProperty("--scale", previewScale);
+
+  const ov = document.createElement("div");
+  ov.className = "preview-overlay";
+  ov.id = `overlay-${idx}`;
+  ov.style.transform = `scale(${previewScale})`;
+
+  ov.innerHTML = `
+    <img class="preview-bg" src="/assets/sun-tzu-background.png" alt="" draggable="false">
+    <div class="preview-text-area">
+      <div class="preview-spacer preview-spacer-top"></div>
+      <div class="preview-spacer preview-spacer-1"></div>
+      <div class="preview-spacer preview-spacer-2"></div>
+      <div class="preview-spacer preview-spacer-3"></div>
+      <p class="preview-quote" id="quote-${idx}"></p>
+    </div>`;
+
+  const q = ov.querySelector(`#quote-${idx}`);
+  q.textContent    = sampleText;
+  q.style.fontFamily  = `'${fd.family}'`;
+  q.style.fontWeight  = fd.weight;
+  q.style.fontSize    = `${renderPx}px`;
+
+  wrap.appendChild(ov);
+  return wrap;
+}
+
+function buildFontRow(fd, idx) {
+  const isBaseline = idx === 0;
+
+  const row = document.createElement("div");
+  row.className = "font-row" + (isBaseline ? " baseline-row" : "");
+  row.dataset.idx = idx;
+
+  // header
+  const header = document.createElement("div");
+  header.className = "row-header";
+  header.innerHTML = `
+    <span class="font-label">
+      ${fd.family}
+      <span style="color:#7a6040;font-size:11px;margin-left:6px">weight&nbsp;${fd.weight}</span>
+      ${isBaseline ? '<span class="baseline-badge">baseline</span>' : ""}
+    </span>
+    <span class="row-stats" id="stats-${idx}"></span>
+    ${!isBaseline
+      ? `<button class="btn" style="font-size:11px;padding:3px 10px"
+           onclick="resetOne(${idx})">Reset</button>`
+      : ""}`;
+  row.appendChild(header);
+
+  // row body: controls + preview side by side
+  const body = document.createElement("div");
+  body.className = "row-body";
+
+  // controls column
+  const controls = document.createElement("div");
+  controls.className = "row-controls";
+  controls.innerHTML = `
+    <div class="scale-control">
+      <label for="slider-${idx}">scale</label>
+      <input id="slider-${idx}" class="scale-slider"
+             type="range" min="${SLIDER_MIN}" max="${SLIDER_MAX}" step="${SLIDER_STEP}"
+             value="${fd.currentScale.toFixed(2)}">
+      <input id="num-${idx}" class="scale-num"
+             type="number" min="${SLIDER_MIN}" max="${SLIDER_MAX}" step="${SLIDER_STEP}"
+             value="${fd.currentScale.toFixed(2)}">
+      <span class="rendered-px" id="rpx-${idx}"></span>
+    </div>`;
+  body.appendChild(controls);
+
+  // overlay preview column
+  body.appendChild(buildOverlayPreview(fd, idx));
+
+  row.appendChild(body);
+
+  // wire slider ↔ number ↔ preview
+  const slider = controls.querySelector(`#slider-${idx}`);
+  const num    = controls.querySelector(`#num-${idx}`);
+
+  slider.addEventListener("input", () => {
+    fontData[idx].currentScale = parseFloat(slider.value);
+    num.value = slider.value;
+    refreshRow(idx);
+  });
+  num.addEventListener("change", () => {
+    const v = Math.min(SLIDER_MAX, Math.max(SLIDER_MIN, parseFloat(num.value) || SLIDER_MIN));
+    num.value    = v.toFixed(2);
+    slider.value = v;
+    fontData[idx].currentScale = v;
+    refreshRow(idx);
+  });
+
+  return row;
+}
+
+// ── Row / preview refresh ────────────────────────────────────────────────────
+
+function refreshRow(idx) {
+  const fd       = fontData[idx];
+  const renderPx = Math.round(basePx * fd.currentScale);
+
+  // update quote text size
+  const q = document.getElementById(`quote-${idx}`);
+  if (q) {
+    q.style.fontSize = `${renderPx}px`;
+    q.textContent    = sampleText;
+  }
+
+  // update preview-wrap and overlay scale transform
+  const wrap = document.getElementById(`wrap-${idx}`);
+  if (wrap) {
+    wrap.style.setProperty("--scale", previewScale);
+    wrap.style.width  = `${320 * previewScale}px`;
+    wrap.style.height = `${300 * previewScale}px`;
+  }
+  const ov = document.getElementById(`overlay-${idx}`);
+  if (ov) ov.style.transform = `scale(${previewScale})`;
+
+  // update rendered-px label
+  const rpx = document.getElementById(`rpx-${idx}`);
+  if (rpx) rpx.textContent = `→ ${renderPx}px`;
+
+  // update stats
+  const stats = document.getElementById(`stats-${idx}`);
+  if (stats) {
+    stats.textContent =
+      `cap-height @ ${MEASURE_PX}px: ${fd.capHeightPx}px  ·  auto scale: ${fd.measuredScale.toFixed(2)}`;
+  }
+
+  updateSnippet();
+}
+
+function refreshAllRows() {
+  fontData.forEach((_, i) => refreshRow(i));
+}
+
+// ── Reset helpers ─────────────────────────────────────────────────────────────
+
+function resetOne(idx) {
+  fontData[idx].currentScale = fontData[idx].measuredScale;
+  const slider = document.getElementById(`slider-${idx}`);
+  const num    = document.getElementById(`num-${idx}`);
+  if (slider) slider.value = fontData[idx].measuredScale.toFixed(2);
+  if (num)    num.value    = fontData[idx].measuredScale.toFixed(2);
+  refreshRow(idx);
+}
+
+function resetAll() { fontData.forEach((_, i) => resetOne(i)); }
+
+// ── Code snippet ──────────────────────────────────────────────────────────────
+
+function updateSnippet() {
+  const lines = fontData.map(fd => {
+    const s   = fd.currentScale.toFixed(2);
+    const pad = Math.max(1, 42 - fd.family.length);
+    return `  { family: "${fd.family}",${" ".repeat(pad)}weight: "${fd.weight}", scale: ${s} },`;
+  });
+  document.getElementById("code-block").textContent =
+    `const QUOTE_FONTS = [\n${lines.join("\n")}\n];`;
+}
+
+function copyCode() {
+  navigator.clipboard.writeText(document.getElementById("code-block").textContent)
+    .then(() => {
+      const btn = document.querySelector(".btn.accent");
+      const orig = btn.textContent;
+      btn.textContent = "Copied!";
+      setTimeout(() => btn.textContent = orig, 1600);
+    });
+}
+
+// ── Global controls ───────────────────────────────────────────────────────────
+
+document.getElementById("base-px-slider").addEventListener("input", e => {
+  basePx = parseInt(e.target.value, 10);
+  document.getElementById("base-px-num").value = basePx;
+  refreshAllRows();
+});
+document.getElementById("base-px-num").addEventListener("change", e => {
+  const v = Math.min(60, Math.max(8, parseInt(e.target.value, 10) || 8));
+  basePx = v;
+  document.getElementById("base-px-slider").value = v;
+  e.target.value = v;
+  refreshAllRows();
+});
+
+document.getElementById("zoom-slider").addEventListener("input", e => {
+  previewScale = parseFloat(e.target.value);
+  document.getElementById("zoom-label").textContent = `${previewScale.toFixed(2)}×`;
+  refreshAllRows();
+});
+
+// ── Preview text input ────────────────────────────────────────────────────────
+
+function updateTextCounts(text) {
+  const words = text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
+  const chars  = text.length;
+  document.getElementById("count-words").textContent = `${words} word${words !== 1 ? "s" : ""}`;
+  document.getElementById("count-chars").textContent = `${chars} char${chars !== 1 ? "s" : ""}`;
+}
+
+(function initPreviewTextInput() {
+  const ta = document.getElementById("preview-text-input");
+  ta.value = SAMPLE_TEXT;
+  updateTextCounts(SAMPLE_TEXT);
+
+  // Sync the base-px controls to the computed value for the default text
+  document.getElementById("base-px-slider").value = basePx;
+  document.getElementById("base-px-num").value    = basePx;
+
+  ta.addEventListener("input", () => {
+    sampleText = ta.value;
+    updateTextCounts(sampleText);
+
+    // Auto-update basePx to match what the live overlay would use
+    const auto = computeBasePx(sampleText);
+    basePx = auto;
+    document.getElementById("base-px-slider").value = auto;
+    document.getElementById("base-px-num").value    = auto;
+
+    refreshAllRows();
+  });
+})();
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+async function init() {
+  const container = document.getElementById("rows-container");
+
+  let fontFiles;
+  try {
+    const resp = await fetch("/fonts-list");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    fontFiles = await resp.json();
+  } catch (err) {
+    container.innerHTML =
+      `<p class="status-msg error">Could not load /fonts-list: ${err.message}<br>
+       Make sure the server is running and open this page via http://localhost:5000/</p>`;
+    return;
+  }
+
+  if (!fontFiles.length) {
+    container.innerHTML = `<p class="status-msg">No font files found in fonts/.</p>`;
+    return;
+  }
+
+  container.innerHTML = `<p class="status-msg">Loading ${fontFiles.length} fonts…</p>`;
+
+  const loaded = await Promise.all(
+    fontFiles.map(({ stem, filename }) => registerFontFace(stem, filename, inferWeight(stem)))
+  );
+  await document.fonts.ready;
+
+  const heights  = loaded.map(f => f.ok ? measureCapHeight(f.stem, f.weight) : MEASURE_PX);
+  const baseline = heights[0];
+
+  fontData = loaded.map((f, i) => ({
+    family:        f.stem,
+    weight:        f.weight,
+    filename:      f.filename,
+    capHeightPx:   heights[i],
+    measuredScale: parseFloat((baseline / heights[i]).toFixed(2)),
+    currentScale:  parseFloat((baseline / heights[i]).toFixed(2)),
+  }));
+
+  container.innerHTML = "";
+  fontData.forEach((fd, i) => container.appendChild(buildFontRow(fd, i)));
+  refreshAllRows();
+}
+
+init();
+</script>
+</body>
+</html>

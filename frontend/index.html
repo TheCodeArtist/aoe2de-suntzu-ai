@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sun Tzu Overlay</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="overlay" class="overlay hidden">
+
+    <img
+      class="overlay-bg"
+      src="/assets/sun-tzu-background.png"
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+    />
+
+    <div class="text-area">
+      <!-- Spacers to push text away from Sun Tzu's portrait (stepped layout) -->
+      <div class="spacer spacer-top" aria-hidden="true"></div>
+      <div class="spacer spacer-1" aria-hidden="true"></div>
+      <div class="spacer spacer-2" aria-hidden="true"></div>
+      <div class="spacer spacer-3" aria-hidden="true"></div>
+      
+      <p id="quote-text" class="quote-text"></p>
+    </div>
+
+  </div>
+
+  <script src="overlay-config.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

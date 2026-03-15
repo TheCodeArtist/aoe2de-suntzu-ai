@@ -1,0 +1,158 @@
+/* =========================================================================
+   Sun Tzu AoE2 Commentary Overlay — style.css
+   OBS Browser Source: set to 320 × 300 px (match the image).
+   body background is transparent — no chroma key required.
+   ========================================================================= */
+
+/* @font-face rules are injected dynamically by script.js from QUOTE_FONTS. */
+
+/* -------------------------------------------------------------------------
+   Reset & base
+   ------------------------------------------------------------------------- */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+/* -------------------------------------------------------------------------
+   Overlay wrapper
+   ------------------------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  display: inline-block;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Fully removed from painting and interaction but keeps layout space,
+   which lets CSS animations restart reliably without a JS reflow hack. */
+.overlay.hidden {
+  visibility: hidden;
+}
+
+.overlay.visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Transition only declared here so it never fires accidentally during
+   the entering→visible class swap (Bug 2). */
+.overlay.fading-out {
+  opacity: 0;
+  transition: opacity 0.6s ease-in-out;
+}
+
+/* -------------------------------------------------------------------------
+   Background image
+   ------------------------------------------------------------------------- */
+
+.overlay-bg {
+  display: block;
+  width: 320px;
+  height: 300px;
+  user-select: none;
+}
+
+/* -------------------------------------------------------------------------
+   Text area — measured from the screenshot (320 × 300 px overlay).
+
+   Frame inset: ~30 px left/top, ~28 px right/bottom.
+   Text area: 262 × 240 px.
+
+   Sun Tzu figure (right side) exclusion zones:
+   We use 3 floated spacers to create a "stepped" exclusion area around the portrait.
+   This ensures text wraps around the hat, face, and body without overlapping.
+   ------------------------------------------------------------------------- */
+
+.text-area {
+  position: absolute;
+  top: 30px;
+  left: 30px;
+  right: 28px;
+  bottom: 30px;
+  overflow: hidden;
+}
+
+.spacer {
+  float: right;
+  clear: right;
+  background: rgba(255, 0, 0, 0); /* make alpha visible to view/debug layout */
+}
+
+/* Step 0: Empty top area (allows full width text) */
+.spacer-top {
+  width: 0px;
+  height: 68px;
+}
+
+/* Step 1: Hat area (top of figure) */
+.spacer-1 {
+  width: 108px;
+  height: 50px;
+}
+
+/* Step 2: Face area */
+.spacer-2 {
+  width: 120px;
+  height: 60px;
+}
+
+/* Step 3: Body/Shoulders area (widest) */
+.spacer-3 {
+  width: 162px;
+  height: 62px; /* Fills remaining height to bottom */
+}
+
+.quote-text {
+  font-size: 24px;
+  line-height: 1.3;
+  color: #2a1a06;
+  text-shadow: 0 1px 2px rgba(255, 240, 200, 0.6);
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+
+.quote-text span {
+  opacity: 0;
+  transition: opacity 0.35s ease-in;
+}
+
+.quote-text span.visible {
+  opacity: 1;
+}
+
+@keyframes overlayEnter {
+  from {
+    transform: scale(0.93);
+    transform-origin: bottom left;
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    transform-origin: bottom left;
+    opacity: 1;
+  }
+}
+
+
+/* -------------------------------------------------------------------------
+   Entrance animation
+   ------------------------------------------------------------------------- */
+
+.overlay.entering {
+  visibility: visible;
+  animation: overlayEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
